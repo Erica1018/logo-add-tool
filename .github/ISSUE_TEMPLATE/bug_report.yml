@@ -1,0 +1,50 @@
+name: Bug 报告
+description: 报告 Logo 添加工具在 PowerPoint 中的问题
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: 问题描述
+      description: 简要说明你遇到了什么问题。
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 系统
+      options:
+        - Windows
+        - macOS
+        - 其他
+    validations:
+      required: true
+  - type: input
+    id: powerpoint-version
+    attributes:
+      label: PowerPoint 版本
+      placeholder: 例如 Microsoft 365 PowerPoint 版本 2504
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开 PowerPoint
+        2. 打开 Logo 添加工具
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 截图或错误信息
+      description: 可以粘贴截图，或者复制侧边栏里的错误提示。

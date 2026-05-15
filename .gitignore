@@ -1,0 +1,11 @@
+node_modules/
+dist/
+release/
+.env
+.env.*
+*.log
+*.png
+!public/assets/*.png
+taskpane-preview.png
+.vite/
+coverage/
