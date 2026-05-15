@@ -450,5 +450,9 @@ function PlacementEditor({
 }
 
 function errorMessage(caught: unknown): string {
-  return caught instanceof Error ? caught.message : String(caught);
+  const message = caught instanceof Error ? caught.message : String(caught);
+  if (message === "GeneralException" || message.includes("GeneralException")) {
+    return "PowerPoint 返回了内部错误。请确认当前在普通编辑视图中，重新打开 PowerPoint 后再试。";
+  }
+  return message;
 }

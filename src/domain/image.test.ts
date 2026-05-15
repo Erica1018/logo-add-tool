@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { dataUrlToBase64, defaultLogoSizeInPoints, isSupportedLogoFile, roundPoint } from "./image";
+import {
+  dataUrlToBase64,
+  defaultLogoSizeInPoints,
+  isSupportedLogoFile,
+  roundPoint,
+  shouldDownsampleForPowerPoint,
+} from "./image";
 import type { LogoAsset } from "./types";
 
 describe("image helpers", () => {
@@ -31,5 +37,10 @@ describe("image helpers", () => {
   it("rounds PowerPoint point values consistently", () => {
     expect(roundPoint(12.345)).toBe(12.35);
     expect(roundPoint(12.344)).toBe(12.34);
+  });
+
+  it("flags oversized images for PowerPoint downsampling", () => {
+    expect(shouldDownsampleForPowerPoint({ intrinsicWidth: 3508, intrinsicHeight: 2481 })).toBe(true);
+    expect(shouldDownsampleForPowerPoint({ intrinsicWidth: 1024, intrinsicHeight: 512 })).toBe(false);
   });
 });

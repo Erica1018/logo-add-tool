@@ -1,34 +1,27 @@
 # Logo 添加工具
 
-版本：`0.1.0-mvp`
+版本：`0.1.4`
 
-这是一个 PowerPoint 侧边栏插件，用来把 Logo 添加到整份 PPT 的固定位置。
+这是一个 PowerPoint 侧边栏插件，用来把 Logo 添加到当前 PPT 的每一页。用户可以导入 Logo、插入当前页、在 PowerPoint 页面里直接拖拽缩放，然后把这个位置应用到整份 PPT。
 
-## 使用前准备
+这个仓库统一维护两个交付形态：
 
-先安装 Node.js 20 或更高版本：
-
-https://nodejs.org/
-
-安装完成后，打开命令行输入：
-
-```bash
-node -v
-```
-
-能看到版本号就可以继续。
+- Windows 本地增强版：保留本地 PowerPoint COM helper，批量应用更稳定。
+- Mac 免安装版：不安装 Node.js，不启动本地服务，不需要管理员密码，通过用户目录旁加载 manifest。
 
 ## Windows 用户使用指南
 
+Windows 版适合在自己的电脑上长期使用，需要第一次运行安装脚本，并在使用时启动本地服务。
+
 ### 第一次安装
 
-1. 把压缩包解压到一个固定位置，例如：
+1. 下载或解压项目到固定位置，例如：
 
 ```text
 C:\LogoAddTool
 ```
 
-2. 进入解压后的文件夹。
+2. 进入这个文件夹。
 3. 右键 `install-windows.ps1`，选择“使用 PowerShell 运行”。
 
 如果 Windows 不允许直接运行脚本，可以在这个文件夹里打开 PowerShell，然后运行：
@@ -37,27 +30,21 @@ C:\LogoAddTool
 powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
 ```
 
-安装脚本会自动完成：
-
-- 安装本地 HTTPS 证书。
-- 准备 PowerPoint 插件清单。
-- 尝试把插件目录加入 PowerPoint 受信任加载项目录。
-
-如果脚本提示无法自动注册受信任目录，通常是因为没有管理员权限。此时可以先继续下面的“每次使用”，如果 PowerPoint 里看不到插件，再按“Windows 看不到插件怎么办”处理。
+脚本会准备本地 HTTPS 证书、PowerPoint manifest 和 Windows 批量写入 helper。
 
 ### 每次使用
 
 1. 双击 `start-windows.bat`。
-2. 保持弹出的黑色窗口打开。
+2. 保持弹出的窗口打开。
 3. 打开或重启 PowerPoint。
-4. 在 PowerPoint 顶部菜单中找到“添加 Logo”，打开侧边栏。
+4. 在 PowerPoint 顶部菜单里点击 `添加 Logo`，打开侧边栏。
 
 ### Windows 看不到插件怎么办
 
-如果 PowerPoint 顶部没有“添加 Logo”：
+如果 PowerPoint 顶部没有 `添加 Logo`：
 
 1. 打开 PowerPoint。
-2. 点击 `文件 > 选项 > 信任中心 > 信任中心设置`。
+2. 进入 `文件 > 选项 > 信任中心 > 信任中心设置`。
 3. 进入 `受信任的加载项目录`。
 4. 添加目录：
 
@@ -66,78 +53,71 @@ powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
 ```
 
 5. 勾选“显示在菜单中”。
-6. 关闭并重新打开 PowerPoint。
-7. 进入 `开始 > 加载项`，从共享文件夹里添加 `Logo 添加工具`。
+6. 重启 PowerPoint。
+7. 进入 `开始 > 加载项`，从共享目录里添加 `Logo 添加工具`。
 
 ## Mac 用户使用指南
 
-### 第一次安装
+Mac 版是给普通用户的免安装包。用户只需要解压、双击安装脚本、重启 PowerPoint。
 
-1. 把压缩包解压到一个固定位置，例如：
+### 安装
 
-```text
-~/Applications/LogoAddTool
-```
+1. 下载 GitHub Release 里的 `logo-add-tool-mac-portable-*.zip`。
+2. 解压这个 zip。
+3. 双击 `install-mac.command`。
+4. 关闭并重新打开 PowerPoint。
+5. 打开一个 PPT。
+6. 进入 `开始 > 加载项`，选择 `Logo 添加工具`。
 
-2. 打开终端，进入解压后的文件夹。
-3. 运行：
+如果 macOS 提示无法打开脚本：右键点 `install-mac.command`，选择“打开”。
 
-```bash
-sh install-mac.command
-```
+### 卸载
 
-安装脚本会自动完成：
-
-- 安装本地 HTTPS 证书。
-- 把 `manifest.xml` 放到 PowerPoint 的加载目录。
-
-### 每次使用
-
-1. 打开终端，进入解压后的文件夹。
-2. 运行：
-
-```bash
-sh start-mac.command
-```
-
-3. 保持终端窗口打开。
-4. 打开或重启 PowerPoint。
-5. 进入 `开始 > 加载项`，选择 `Logo 添加工具`。
+双击 `uninstall-mac.command`，然后重启 PowerPoint。
 
 ## 插件使用方法
 
-1. 点击“导入 Logo”。
-2. 可以一次选择多个 PNG、JPEG 或 WebP 文件。
-3. 选择一个 Logo，点击“插入当前页”。
-4. 在 PowerPoint 页面里直接拖拽、缩放这个 Logo。
-5. 点击“使用当前选中 Logo 的位置”。
-6. 点击“应用全部”。
+1. 点击 `导入 Logo`。
+2. 选择一个或多个 PNG、JPEG 或 WebP 文件。
+3. 选中 Logo，点击 `插入当前页`。
+4. 在 PowerPoint 页面里拖拽、缩放 Logo。
+5. 点击 `使用当前选中 Logo 的位置`。
+6. 点击 `应用全部`。
 
-如果要添加第二个 Logo，重复同样步骤即可。不同 Logo 或不同位置不会互相删除。
+如果要添加第二个 Logo，重复同样步骤即可。不同 Logo 和不同位置不会互相删除。
 
-## 重要说明
+## 开发和打包
 
-使用插件时，`start-windows.bat` 或 `start-mac.command` 打开的窗口必须保持打开。这个窗口提供本地 HTTPS 服务，PowerPoint 需要通过它加载侧边栏。
+本地开发：
 
-如果 PowerPoint 显示加载失败，请先确认浏览器能打开：
-
-```text
-https://localhost:3001/index.html
+```powershell
+npm install
+npm run dev
 ```
 
-## 技术文档
+构建检查：
 
-普通用户不需要阅读下面文档。后续开发或维护时再看：
+```powershell
+npm run typecheck
+npm test
+npm run build
+```
 
-- `docs/technical-architecture.md`
-- `docs/user-installation.md`
-- `CHANGELOG.md`
+生成 Mac 免安装交付包：
 
-## 开源参与
+```powershell
+$env:LOGO_ADD_TOOL_URL="https://erica1018.github.io/logo-add-tool"
+npm run package:mac
+```
 
-这个仓库同时维护 Windows 和 Mac 的 PowerPoint 插件方案，主分支保存通用源码和平台适配逻辑。旧的 `logo-add-tool-mac` 可以保留为历史版本或部署仓库，不建议作为长期 Mac 功能分支继续开发。
+生成的 zip 会放在 `release/` 目录。这个 zip 才是可以发给 Mac 用户的包。
 
-欢迎提交 Issue 和 Pull Request。参与开发前请先阅读：
+## 维护说明
 
-- `CONTRIBUTING.md`
-- `docs/technical-architecture.md`
+Mac 免安装版已经并入本仓库，不需要单独维护另一个功能项目。后续建议：
+
+- 主仓库 `logo-add-tool`：维护源码、文档、打包脚本、Windows 和 Mac 适配逻辑。
+- GitHub Pages：托管 Mac 免安装版侧边栏静态文件。
+- GitHub Releases：发布最终用户 zip。
+
+旧的 `logo-add-tool-mac` 可以保留为历史部署仓库，不建议继续作为功能分支开发。

@@ -1,5 +1,5 @@
 import { createId } from "../domain/id";
-import { dataUrlToBase64, defaultLogoSizeInPoints, roundPoint } from "../domain/image";
+import { dataUrlToBase64, defaultLogoSizeInPoints, prepareLogoDataForPowerPoint, roundPoint } from "../domain/image";
 import { createStampShapeName, isStampShapeName, parseStampShapeName } from "../domain/stampMetadata";
 import type {
   InsertedLogo,
@@ -13,6 +13,7 @@ import type {
 const TAG_BRAND_STAMP = "brandStamp";
 const TAG_LOGO_ID = "logoId";
 const TAG_PLACEMENT_ID = "placementId";
+const POWERPOINT_HOST_SETTLE_DELAY_MS = 80;
 
 type ShapeCollectionWithPreviewPicture = PowerPoint.ShapeCollection & {
   addPicture(
@@ -21,12 +22,37 @@ type ShapeCollectionWithPreviewPicture = PowerPoint.ShapeCollection & {
   ): PowerPoint.Shape;
 };
 
+type ImageInsertionOptions = Office.SetSelectedDataOptions & {
+  imageLeft?: number;
+  imageTop?: number;
+  imageWidth?: number;
+  imageHeight?: number;
+};
+
+type SlideInfo = {
+  id: string;
+  index: number;
+};
+
 type SlideShapeSnapshot = Map<string, Set<string>>;
+
+type CurrentSlideShapeSnapshot = {
+  slideId: string;
+  shapeIds: Set<string>;
+};
+
+type InsertedShapeRef = {
+  slideId: string;
+  shapeId: string;
+};
 
 export class OfficeJsPowerPointAdapter implements PowerPointAdapter {
   async insertLogoOnCurrentSlide(asset: LogoAsset): Promise<InsertedLogo> {
     await this.ensureOfficeReady();
-    return PowerPoint.run(async (context) => {
+    const insertedShapeRef: { current: InsertedShapeRef | null } = { current: null };
+    const insertedMetadata: { current: StampMetadata | null } = { current: null };
+
+    const insertedLogo = await PowerPoint.run(async (context) => {
       const selectedSlides = context.presentation.getSelectedSlides();
       const slide = selectedSlides.getItemAt(0);
       const size = defaultLogoSizeInPoints(asset);
@@ -41,32 +67,45 @@ export class OfficeJsPowerPointAdapter implements PowerPointAdapter {
         createdAt: new Date().toISOString(),
       };
 
-      const base64Image = dataUrlToBase64(asset.data);
+      const imageData = await prepareLogoDataForPowerPoint(asset);
+      const base64Image = dataUrlToBase64(imageData);
+      const metadata: StampMetadata = { brandStamp: true, logoId: asset.id, placementId: placement.id };
+      insertedMetadata.current = metadata;
 
       if (!this.hasPreviewAddPicture(slide.shapes)) {
         const beforeShapeIds = await this.getDeckShapeIdsBySlide();
         slide.load("id");
         await context.sync();
         await this.insertImageWithDocumentApi(base64Image);
-        await this.markInsertedShapeSince(
+        const insertedShape = await this.markInsertedShapeSince(
           slide.id,
           beforeShapeIds,
-          { brandStamp: true, logoId: asset.id, placementId: placement.id },
+          metadata,
           placement,
         );
+        if (insertedShape) {
+          insertedShapeRef.current = insertedShape;
+        }
         return { shapeId: "office-selected-image", placement };
       }
 
       const picture = this.addPicture(slide.shapes, base64Image, placement);
-      this.markShape(picture, { brandStamp: true, logoId: asset.id, placementId: placement.id });
+      this.markShape(picture, metadata);
       picture.load("id");
+      slide.load("id");
       await context.sync();
 
-      slide.setSelectedShapes([picture.id]);
-      await context.sync();
+      insertedShapeRef.current = { slideId: slide.id, shapeId: picture.id };
 
       return { shapeId: picture.id, placement };
     });
+
+    if (insertedShapeRef.current && insertedMetadata.current) {
+      await this.tryMarkShapeTags(insertedShapeRef.current.slideId, insertedShapeRef.current.shapeId, insertedMetadata.current);
+      await this.trySelectShape(insertedShapeRef.current.slideId, insertedShapeRef.current.shapeId);
+    }
+
+    return insertedLogo;
   }
 
   async readSelectedLogoPlacement(activeLogoId?: string): Promise<LogoPlacement> {
@@ -113,11 +152,14 @@ export class OfficeJsPowerPointAdapter implements PowerPointAdapter {
 
   async applyPlacementToAllSlides(asset: LogoAsset, placement: LogoPlacement): Promise<void> {
     await this.ensureOfficeReady();
+    const imageData = await prepareLogoDataForPowerPoint(asset);
     if (!(await this.canUsePreviewAddPicture())) {
-      if (this.detectPlatform() !== "windows") {
-        throw new Error("当前 PowerPoint 版本暂不支持批量插入图片。Windows 版本会使用本机 PowerPoint COM 兜底。");
+      if (this.detectPlatform() === "windows") {
+        await this.applyPlacementWithLocalComHelper(asset, placement);
+        return;
       }
-      await this.applyPlacementWithLocalComHelper(asset, placement);
+
+      await this.applyPlacementWithSelectedDataFallback(asset, placement, imageData);
       return;
     }
 
@@ -133,7 +175,7 @@ export class OfficeJsPowerPointAdapter implements PowerPointAdapter {
           }
         }
 
-        const picture = this.addPicture(slide.shapes, dataUrlToBase64(asset.data), {
+        const picture = this.addPicture(slide.shapes, dataUrlToBase64(imageData), {
           left: placement.left,
           top: placement.top,
           width: placement.width,
@@ -191,14 +233,24 @@ export class OfficeJsPowerPointAdapter implements PowerPointAdapter {
     await this.ensureOfficeReady();
     const platform = this.detectPlatform();
     const isPowerPoint = Office.context?.host === Office.HostType.PowerPoint;
+    const canUseBatchPictures = isPowerPoint ? await this.canUsePreviewAddPicture() : false;
     const warnings: string[] = [];
 
     if (!isPowerPoint) {
       warnings.push("请在 PowerPoint 内打开此插件。");
     }
 
-    warnings.push("当前环境会优先使用 PowerPoint 图片 API；如果缺少预览能力，Windows 会改用本机 PowerPoint COM 批量写入。");
-    warnings.push("Office.js 目前没有稳定暴露图形锁定能力，后续阶段会优先探索母版/版式模式。");
+    if (isPowerPoint && !canUseBatchPictures) {
+      if (platform === "windows") {
+        warnings.push("当前 Windows PowerPoint 会使用本地 COM helper 批量写入 Logo。");
+      } else {
+        warnings.push("当前 PowerPoint 会使用兼容模式逐页写入 Logo，过程中可能短暂切换幻灯片。");
+      }
+    }
+
+    if (platform === "mac") {
+      warnings.push("Mac 免安装版不需要 Node、本地 HTTPS 服务或管理员权限；图形锁定会在后续 Helper 版中继续实现。");
+    }
 
     return {
       host: "office-js",
@@ -215,11 +267,36 @@ export class OfficeJsPowerPointAdapter implements PowerPointAdapter {
 
   private markShape(shape: PowerPoint.Shape, metadata: StampMetadata): void {
     shape.name = createStampShapeName(metadata);
+  }
+
+  private markShapeTags(shape: PowerPoint.Shape, metadata: StampMetadata): void {
     shape.tags.add(TAG_BRAND_STAMP, "true");
     shape.tags.add(TAG_LOGO_ID, metadata.logoId);
     shape.tags.add(TAG_PLACEMENT_ID, metadata.placementId);
-    shape.altTextTitle = "品牌 Logo 固定标识";
-    shape.altTextDescription = "由 Logo 添加工具放置的 Logo。";
+  }
+
+  private async tryMarkShapeTags(slideId: string, shapeId: string, metadata: StampMetadata): Promise<void> {
+    try {
+      await PowerPoint.run(async (context) => {
+        const shape = context.presentation.slides.getItem(slideId).shapes.getItem(shapeId);
+        this.markShapeTags(shape, metadata);
+        await context.sync();
+      });
+    } catch {
+      // Shape name is the canonical marker. Tags are best-effort on Mac Office builds.
+    }
+  }
+
+  private async trySelectShape(slideId: string, shapeId: string): Promise<void> {
+    try {
+      await PowerPoint.run(async (context) => {
+        const slide = context.presentation.slides.getItem(slideId);
+        slide.setSelectedShapes([shapeId]);
+        await context.sync();
+      });
+    } catch {
+      // Selection is only a convenience. It should not make insertion/apply fail.
+    }
   }
 
   private addPicture(
@@ -239,11 +316,15 @@ export class OfficeJsPowerPointAdapter implements PowerPointAdapter {
   }
 
   private async canUsePreviewAddPicture(): Promise<boolean> {
-    return PowerPoint.run(async (context) => {
-      const slide = context.presentation.slides.getItemAt(0);
-      await context.sync();
-      return this.hasPreviewAddPicture(slide.shapes);
-    });
+    try {
+      return await PowerPoint.run(async (context) => {
+        const slide = context.presentation.slides.getItemAt(0);
+        await context.sync();
+        return this.hasPreviewAddPicture(slide.shapes);
+      });
+    } catch {
+      return false;
+    }
   }
 
   private async applyPlacementWithLocalComHelper(asset: LogoAsset, placement: LogoPlacement): Promise<void> {
@@ -316,6 +397,127 @@ export class OfficeJsPowerPointAdapter implements PowerPointAdapter {
     return message;
   }
 
+  private async applyPlacementWithSelectedDataFallback(
+    asset: LogoAsset,
+    placement: LogoPlacement,
+    imageData: string,
+  ): Promise<void> {
+    const base64Image = dataUrlToBase64(imageData);
+    const slides = await this.getSlideInfos();
+    if (slides.length === 0) {
+      throw new Error("当前演示文稿没有可写入的幻灯片。");
+    }
+
+    const originalSlideId = await this.getCurrentSlideId().catch(() => null);
+    const originalSlideOrdinal = Math.max(0, slides.findIndex((slide) => slide.id === originalSlideId));
+    const temporaryPlacementId = createId("placement_tmp");
+    const temporaryMetadata: StampMetadata = {
+      brandStamp: true,
+      logoId: asset.id,
+      placementId: temporaryPlacementId,
+    };
+    const finalMetadata: StampMetadata = {
+      brandStamp: true,
+      logoId: asset.id,
+      placementId: placement.id,
+    };
+
+    const insertedShapeIds: InsertedShapeRef[] = [];
+    try {
+      await this.goToSlideOrdinal(0);
+      for (let slideIndex = 0; slideIndex < slides.length; slideIndex += 1) {
+        const beforeSnapshot = await this.getCurrentSlideShapeSnapshot();
+        await this.insertImageWithDocumentApi(base64Image, placement);
+        await this.waitForPowerPointHostToSettle();
+        const shapeId = await this.markInsertedShapeOnSlideSince(
+          beforeSnapshot.slideId,
+          beforeSnapshot.shapeIds,
+          temporaryMetadata,
+          placement,
+        );
+
+        if (!shapeId) {
+          throw new Error("PowerPoint 已插入图片，但插件没有找到新 Logo 图形。请重试。");
+        }
+
+        insertedShapeIds.push({ slideId: beforeSnapshot.slideId, shapeId });
+        if (slideIndex < slides.length - 1) {
+          await this.goToRelativeSlide(Office.Index.Next);
+        }
+      }
+
+      await this.commitTemporaryPlacement(placement.id, temporaryPlacementId, finalMetadata, insertedShapeIds);
+    } catch (error) {
+      await this.removePlacement(temporaryPlacementId).catch(() => undefined);
+      throw error;
+    } finally {
+      await this.goToSlideOrdinal(originalSlideOrdinal).catch(() => undefined);
+    }
+  }
+
+  private async commitTemporaryPlacement(
+    finalPlacementId: string,
+    temporaryPlacementId: string,
+    finalMetadata: StampMetadata,
+    insertedShapeIds: InsertedShapeRef[],
+  ): Promise<void> {
+    const insertedShapeKeys = new Set(insertedShapeIds.map((item) => `${item.slideId}:${item.shapeId}`));
+    await PowerPoint.run(async (context) => {
+      const slides = context.presentation.slides;
+      slides.load("items/id,items/shapes/items/id,items/shapes/items/name");
+      await context.sync();
+
+      for (const slide of slides.items) {
+        for (const shape of slide.shapes.items) {
+          const shapeKey = `${slide.id}:${shape.id}`;
+          if (isStampShapeName(shape.name, finalPlacementId)) {
+            shape.delete();
+            continue;
+          }
+
+          if (insertedShapeKeys.has(shapeKey) && isStampShapeName(shape.name, temporaryPlacementId)) {
+            this.markShape(shape, finalMetadata);
+          }
+        }
+      }
+
+      await context.sync();
+    });
+  }
+
+  private async getSlideInfos(): Promise<SlideInfo[]> {
+    return PowerPoint.run(async (context) => {
+      const slides = context.presentation.slides;
+      slides.load("items/id,items/index");
+      await context.sync();
+      return slides.items
+        .map((slide) => ({ id: slide.id, index: slide.index }))
+        .sort((a, b) => a.index - b.index);
+    });
+  }
+
+  private async getCurrentSlideId(): Promise<string> {
+    return PowerPoint.run(async (context) => {
+      const slide = context.presentation.getSelectedSlides().getItemAt(0);
+      slide.load("id");
+      await context.sync();
+      return slide.id;
+    });
+  }
+
+  private async getCurrentSlideShapeSnapshot(): Promise<CurrentSlideShapeSnapshot> {
+    return PowerPoint.run(async (context) => {
+      const slide = context.presentation.getSelectedSlides().getItemAt(0);
+      slide.load("id");
+      slide.load("shapes/items/id");
+      await context.sync();
+      return {
+        slideId: slide.id,
+        shapeIds: new Set(slide.shapes.items.map((shape) => shape.id)),
+      };
+    });
+  }
+
   private async getDeckShapeIdsBySlide(): Promise<SlideShapeSnapshot> {
     return PowerPoint.run(async (context) => {
       const slides = context.presentation.slides;
@@ -335,7 +537,7 @@ export class OfficeJsPowerPointAdapter implements PowerPointAdapter {
     beforeShapeIds: SlideShapeSnapshot,
     metadata: StampMetadata,
     placement?: Pick<LogoPlacement, "left" | "top" | "width" | "height">,
-  ): Promise<string | null> {
+  ): Promise<InsertedShapeRef | null> {
     return PowerPoint.run(async (context) => {
       const slides = context.presentation.slides;
       slides.load("items/id,items/shapes/items/id");
@@ -366,17 +568,53 @@ export class OfficeJsPowerPointAdapter implements PowerPointAdapter {
         shape.width = placement.width;
         shape.height = placement.height;
       }
-      slide.setSelectedShapes([shape.id]);
       await context.sync();
-      return slide.id;
+      return { slideId: slide.id, shapeId: shape.id };
     });
   }
 
-  private insertImageWithDocumentApi(base64Image: string): Promise<void> {
+  private async markInsertedShapeOnSlideSince(
+    slideId: string,
+    beforeShapeIds: Set<string>,
+    metadata: StampMetadata,
+    placement: Pick<LogoPlacement, "left" | "top" | "width" | "height">,
+  ): Promise<string | null> {
+    return PowerPoint.run(async (context) => {
+      const slide = context.presentation.slides.getItem(slideId);
+      slide.load("shapes/items/id");
+      await context.sync();
+
+      const target = slide.shapes.items.filter((shape) => !beforeShapeIds.has(shape.id)).at(-1);
+      if (!target) {
+        return null;
+      }
+
+      this.markShape(target, metadata);
+      target.left = placement.left;
+      target.top = placement.top;
+      target.width = placement.width;
+      target.height = placement.height;
+      await context.sync();
+      return target.id;
+    });
+  }
+
+  private insertImageWithDocumentApi(
+    base64Image: string,
+    placement?: Pick<LogoPlacement, "left" | "top" | "width" | "height">,
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
+      const options: ImageInsertionOptions = { coercionType: Office.CoercionType.Image };
+      if (placement) {
+        options.imageLeft = placement.left;
+        options.imageTop = placement.top;
+        options.imageWidth = placement.width;
+        options.imageHeight = placement.height;
+      }
+
       Office.context.document.setSelectedDataAsync(
         base64Image,
-        { coercionType: Office.CoercionType.Image },
+        options,
         (asyncResult) => {
           if (asyncResult.status === Office.AsyncResultStatus.Failed) {
             reject(new Error(asyncResult.error.message));
@@ -386,6 +624,38 @@ export class OfficeJsPowerPointAdapter implements PowerPointAdapter {
           resolve();
         },
       );
+    });
+  }
+
+  private async goToSlideOrdinal(ordinal: number): Promise<void> {
+    await this.goToRelativeSlide(Office.Index.First);
+    for (let index = 0; index < ordinal; index += 1) {
+      await this.goToRelativeSlide(Office.Index.Next);
+    }
+  }
+
+  private goToRelativeSlide(target: Office.Index): Promise<void> {
+    return new Promise((resolve, reject) => {
+      Office.context.document.goToByIdAsync(
+        target,
+        Office.GoToType.Index,
+        { selectionMode: Office.SelectionMode.None },
+        async (asyncResult) => {
+          if (asyncResult.status === Office.AsyncResultStatus.Failed) {
+            reject(new Error(asyncResult.error.message));
+            return;
+          }
+
+          await this.waitForPowerPointHostToSettle();
+          resolve();
+        },
+      );
+    });
+  }
+
+  private waitForPowerPointHostToSettle(): Promise<void> {
+    return new Promise((resolve) => {
+      window.setTimeout(resolve, POWERPOINT_HOST_SETTLE_DELAY_MS);
     });
   }
 

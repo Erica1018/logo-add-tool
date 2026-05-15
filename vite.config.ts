@@ -2,33 +2,48 @@ import { defineConfig, type Plugin, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react";
 import { spawn } from "node:child_process";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { readFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const officeCertDir = join(homedir(), ".office-addin-dev-certs");
 const projectDir = dirname(fileURLToPath(import.meta.url));
-const https = {
-  cert: readFileSync(join(officeCertDir, "localhost.crt")),
-  key: readFileSync(join(officeCertDir, "localhost.key")),
-};
 
-export default defineConfig({
-  plugins: [react(), powerPointComHelper()],
-  server: {
-    host: "localhost",
-    port: 3001,
-    strictPort: true,
-    https,
-  },
-  preview: {
-    host: "localhost",
-    port: 3001,
-    strictPort: true,
-    https,
-  },
+export default defineConfig(({ command }) => {
+  const useLocalOfficeHttps = command === "serve";
+  const https = useLocalOfficeHttps ? readOfficeDevHttpsOptions() : undefined;
+
+  return {
+    base: "./",
+    plugins: [react(), ...(useLocalOfficeHttps ? [powerPointComHelper()] : [])],
+    server: {
+      host: "localhost",
+      port: 3001,
+      strictPort: true,
+      https,
+    },
+    preview: {
+      host: "localhost",
+      port: 3001,
+      strictPort: true,
+      https,
+    },
+  };
 });
+
+function readOfficeDevHttpsOptions(): { cert: Buffer; key: Buffer } {
+  const certPath = join(officeCertDir, "localhost.crt");
+  const keyPath = join(officeCertDir, "localhost.key");
+  if (!existsSync(certPath) || !existsSync(keyPath)) {
+    throw new Error("缺少 Office 本地开发 HTTPS 证书。请先运行 npx office-addin-dev-certs install。");
+  }
+
+  return {
+    cert: readFileSync(certPath),
+    key: readFileSync(keyPath),
+  };
+}
 
 function powerPointComHelper(): Plugin {
   return {

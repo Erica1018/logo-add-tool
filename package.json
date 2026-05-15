@@ -1,6 +1,6 @@
 {
   "name": "logo-add-tool",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "private": false,
   "description": "用于把 Logo 添加到整份 PowerPoint 的侧边栏插件。",
   "license": "MIT",
@@ -17,6 +17,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host localhost --port 3001",
     "serve:local": "node server/local-server.mjs",
+    "render:manifest": "node tools/render-manifest.mjs",
+    "package:mac": "node tools/package-mac-release.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

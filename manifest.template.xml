@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<OfficeApp
+  xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+  xsi:type="TaskPaneApp">
+  <Id>8d74d909-117d-4d68-a4f7-35f0f041ad87</Id>
+  <Version>1.0.4.0</Version>
+  <ProviderName>Logo 添加工具</ProviderName>
+  <DefaultLocale>zh-CN</DefaultLocale>
+  <DisplayName DefaultValue="Logo 添加工具" />
+  <Description DefaultValue="在 PowerPoint 侧边栏中把 Logo 添加到整份演示文稿。" />
+  <IconUrl DefaultValue="__TASKPANE_ORIGIN__/assets/icon-32.png" />
+  <HighResolutionIconUrl DefaultValue="__TASKPANE_ORIGIN__/assets/icon-80.png" />
+  <SupportUrl DefaultValue="__TASKPANE_ORIGIN__" />
+  <AppDomains>
+    <AppDomain>__TASKPANE_ORIGIN__</AppDomain>
+  </AppDomains>
+  <Hosts>
+    <Host Name="Presentation" />
+  </Hosts>
+  <DefaultSettings>
+    <SourceLocation DefaultValue="__TASKPANE_ORIGIN__/index.html" />
+  </DefaultSettings>
+  <Permissions>ReadWriteDocument</Permissions>
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Presentation">
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="GetStarted.Title" />
+            <Description resid="GetStarted.Description" />
+            <LearnMoreUrl resid="GetStarted.LearnMoreUrl" />
+          </GetStarted>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="LogoAddTool.Group">
+                <Label resid="Commands.GroupLabel" />
+                <Icon>
+                  <bt:Image size="16" resid="Icon.16x16" />
+                  <bt:Image size="32" resid="Icon.32x32" />
+                  <bt:Image size="80" resid="Icon.80x80" />
+                </Icon>
+                <Control xsi:type="Button" id="LogoAddTool.OpenPane">
+                  <Label resid="Commands.OpenLabel" />
+                  <Supertip>
+                    <Title resid="Commands.OpenLabel" />
+                    <Description resid="Commands.OpenDescription" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16x16" />
+                    <bt:Image size="32" resid="Icon.32x32" />
+                    <bt:Image size="80" resid="Icon.80x80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>LogoAddTool.Taskpane</TaskpaneId>
+                    <SourceLocation resid="Taskpane.Url" />
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Icon.16x16" DefaultValue="__TASKPANE_ORIGIN__/assets/icon-16.png" />
+        <bt:Image id="Icon.32x32" DefaultValue="__TASKPANE_ORIGIN__/assets/icon-32.png" />
+        <bt:Image id="Icon.80x80" DefaultValue="__TASKPANE_ORIGIN__/assets/icon-80.png" />
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Taskpane.Url" DefaultValue="__TASKPANE_ORIGIN__/index.html" />
+        <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="__TASKPANE_ORIGIN__" />
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="GetStarted.Title" DefaultValue="Logo 添加工具已就绪" />
+        <bt:String id="Commands.GroupLabel" DefaultValue="品牌 Logo" />
+        <bt:String id="Commands.OpenLabel" DefaultValue="添加 Logo" />
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="GetStarted.Description" DefaultValue="打开侧边栏，选择 Logo，在页面中定位，然后应用到整份 PPT。" />
+        <bt:String id="Commands.OpenDescription" DefaultValue="打开 Logo 库和位置添加工具。" />
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>
